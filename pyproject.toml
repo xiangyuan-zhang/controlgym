@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "controlgym"
+version = "0.1.0"
+description = "large-scale safety-critical control benchmarks for reinforcement learning algorithms"
+authors = ["Xiangyuan Zhang <xz7@illinois.edu>", 
+            "Weichao Mao <weichao2@illinois.edu>",
+            "Saviz Mowlavi <mowlavi@merl.com>"]
+license = "MIT"
+readme = "README.md"
+exclude = ["examples.ipynb", "requirements.txt", "setup.py", "**/.conda", "**/.vscode"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^1.24.3"
+scipy = "^1.11.1"
+matplotlib = "^3.7.2"
+torch = "^2.0.1"
+gymnasium = "0.29.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
