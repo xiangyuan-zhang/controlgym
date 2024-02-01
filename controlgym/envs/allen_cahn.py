@@ -140,8 +140,7 @@ class AllenCahnEnv(PDE):
             )
             right_hand_side = -self.potential_constant * (1 / aa_factor) * np.fft.rfft(
                 aa_state ** 3
-            )[0 : int(self.n_state / 2) + 1]
-            + (np.fft.rfft(self.control_sup, axis=0) @ action)
+            )[0 : int(self.n_state / 2) + 1] + (np.fft.rfft(self.control_sup, axis=0) @ action)
             return right_hand_side
         return fourier_nonlinear_op
 

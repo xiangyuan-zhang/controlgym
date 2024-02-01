@@ -138,8 +138,7 @@ class FisherEnv(PDE):
                 self.reaction_constant
                 * (1 / aa_factor)
                 * np.fft.rfft(aa_state * (1 - aa_state))[0 : int(self.n_state / 2) + 1]
-            )
-            +(np.fft.rfft(self.control_sup, axis=0) @ action)
+            ) + (np.fft.rfft(self.control_sup, axis=0) @ action)
             return right_hand_side
 
         return fourier_nonlinear_op
