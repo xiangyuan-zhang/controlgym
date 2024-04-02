@@ -1,6 +1,7 @@
-# controlgym
+# controlgym 
+[![PyPI version](https://badge.fury.io/py/controlgym.svg)](https://pypi.org/project/controlgym/)
 
-## Description
+## Description 
 `Controlgym` provides 36 industrial control environments and 10 infinite-dimensional PDE-based control problems with continuous, unbounded action and observation spaces that are inspired by real-world applications. This project supports the Learning for Dynamics & Control (L4DC) community, focusing on vital issues: convergence of reinforcement learning (RL) algorithms in policy development, stability, and robustness of learning-based controllers, and the scalability of RL algorithms to high and potentially infinite-dimensional systems. We provide a detailed description of `controlgym` in [this paper](https://arxiv.org/abs/2311.18736).
 
 <p align="center">
