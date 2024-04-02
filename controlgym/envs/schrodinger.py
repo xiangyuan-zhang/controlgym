@@ -32,10 +32,11 @@ class SchrodingerEnv(PDE):
     [sample_time]: each discrete-time step represents (ts) seconds. Default is 0.005.
     [process_noise_cov]: process noise covariance coefficient. Default is 0.0.
     [sensor_noise_cov]: sensor noise covariance coefficient. Default is 0.25.
-    [random_init_state_cov]: random initial state covariance coefficient. Default is 0.0.
     [target_state]: target state. Default is np.zeros(n_state).
-    [init_state]: initial state. Default is
-        np.cosh(10 * (self.domain_coordinates - 1 * self.domain_length / 2)) ** (-1).
+    [init_amplitude_mean]: mean of initial amplitude. Default is 1.0.
+    [init_amplitude_width]: width of initial amplitude. Default is 0.2.
+    [init_spread_mean]: mean of initial spread. Default is 0.05.
+    [init_spread_width]: width of initial spread. Default is 0.02.
     [planck_constant]: planck constant. Default is 1.0.
     [particle_mass]: particle mass. Default is 1.0.
     [potential]: potential. Default is 0.0.
@@ -48,7 +49,7 @@ class SchrodingerEnv(PDE):
     [action_limit]: limit of action. Default is None.
     [observation_limit]: limit of observation. Default is None.
     [reward_limit]: limit of reward. Default is None.
-    [seed]: random seed. Default is 0.
+    [seed]: random seed. Default is None.
     """
 
     def __init__(
@@ -59,9 +60,11 @@ class SchrodingerEnv(PDE):
         sample_time: float = 0.001,
         process_noise_cov: float = 0.0,
         sensor_noise_cov: float = 0.25,
-        random_init_state_cov: float = 0.0,
         target_state: np.ndarray[float] = None,
-        init_state: np.ndarray[float] = None,
+        init_amplitude_mean: float = 1.0,
+        init_amplitude_width: float = 0.2,
+        init_spread_mean: float = 0.05,
+        init_spread_width: float = 0.02,
         planck_constant: float = 1.0,
         particle_mass: float = 1.0,
         potential: float = 0.0,
@@ -74,8 +77,9 @@ class SchrodingerEnv(PDE):
         action_limit: float = None,
         observation_limit: float = None,
         reward_limit: float = None,
-        seed: int = 0,
+        seed: int = None,
     ):
+        self.n_state_half = int(n_state / 2)
         PDE.__init__(
             self,
             id="schrodinger",
@@ -85,7 +89,6 @@ class SchrodingerEnv(PDE):
             sample_time=sample_time,
             process_noise_cov=process_noise_cov,
             sensor_noise_cov=sensor_noise_cov,
-            random_init_state_cov=random_init_state_cov,
             target_state=target_state,
             n_state=n_state,
             n_observation=n_observation,
@@ -99,8 +102,6 @@ class SchrodingerEnv(PDE):
             seed=seed,
         )
 
-        self.n_state_half = int(self.n_state / 2)
-
         # set up the grid parameters: since the state x comprises both the reak and
         # imaginary parts of u, the number of grid points is half the dimension of x
         self.domain_coordinates = np.linspace(
@@ -109,27 +110,40 @@ class SchrodingerEnv(PDE):
             self.n_state_half,
         )
 
-        # the highest priority is to use the user-provided initial state
-        if init_state is not None:
-            self.init_state = init_state
-        else:
-            # if the user does not provide an initial state, use the default initial state
-            init_u = np.cosh(
-                10 * (self.domain_coordinates - 1 * self.domain_length / 2)
-            ) ** (-1)
-            init_v = np.zeros(self.n_state_half)
-            self.init_state = np.concatenate((init_u, init_v))
-        self.state = self.init_state
-
         # set up the physical parameters
         self.planck_constant = planck_constant
         self.particle_mass = particle_mass
         self.potential = potential
-
-        # compute A, B2, C
+        
+        # compute A and B2 matrices
         self.A = self._compute_A()
-        self.B2 = self._compute_control_sup()
-        self.C = self._compute_C()
+        self.B2 = self.control_sup
+
+        # initial state parameters
+        self.init_amplitude_mean = init_amplitude_mean
+        self.init_amplitude_width = init_amplitude_width
+        self.init_spread_mean = init_spread_mean
+        self.init_spread_width = init_spread_width
+        self.reset()
+
+    def select_init_state(self, init_amplitude=None, init_spread=None):
+        """Function to select the initial state of the PDE."""
+        if init_amplitude is None:
+            random_amplitude = self.rng.uniform(
+                -0.5 * self.init_amplitude_width, 0.5 * self.init_amplitude_width
+            )
+            init_amplitude = self.init_amplitude_mean + random_amplitude
+        if init_spread is None:
+            random_spread = self.rng.uniform(
+                -0.5 * self.init_spread_width, 0.5 * self.init_spread_width
+            )
+            init_spread = self.init_spread_mean + random_spread
+        init_u = init_amplitude * np.cosh(
+            1 / init_spread * (self.domain_coordinates - 1 * self.domain_length / 2)
+        ) ** (-1)
+        init_v = np.zeros(self.n_state_half)
+        init_state = np.concatenate((init_u, init_v))
+        return init_state
 
     def step(self, action: np.ndarray[float]):
         """Run one timestep of the environment's dynamics using the agent actions and optional disturbance input.
@@ -168,7 +182,7 @@ class SchrodingerEnv(PDE):
 
         # compute the observation
         observation = self._get_obs()
-        
+
         # compute the next state
         next_state = self.A @ self.state + self.B2 @ action + disturbance
 
@@ -180,7 +194,7 @@ class SchrodingerEnv(PDE):
 
         # update the environment
         self.state = next_state
-        
+
         # terminated if the cost is too large
         self.step_count += 1
         terminated = False if self.step_count < self.n_steps else True
@@ -300,5 +314,9 @@ class SchrodingerEnv(PDE):
             "planck_constant": self.planck_constant,
             "particle_mass": self.particle_mass,
             "potential": self.potential,
+            "init_amplitude_mean": self.init_amplitude_mean,
+            "init_amplitude_width": self.init_amplitude_width,
+            "init_spread_mean": self.init_spread_mean,
+            "init_spread_width": self.init_spread_width,
         }
         return {**pde_dict, **extra_data}

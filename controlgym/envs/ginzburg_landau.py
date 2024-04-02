@@ -25,11 +25,11 @@ class GinzburgLandauEnv(PDE):
     [sample_time]: each discrete-time step represents (ts) seconds. Default is 0.1.
     [process_noise_cov]: process noise covariance coefficient. Default is 0.0.
     [sensor_noise_cov]: sensor noise covariance coefficient. Default is 0.25.
-    [random_init_state_cov]: random initial state covariance coefficient. Default is 0.0.
     [target_state]: target state. Default is np.zeros(n_state).
-    [init_state]: initial state. Default is
-        0.1 * np.tanh(self.domain_coordinates - self.domain_length / 3)
-        - 0.1 * np.tanh(self.domain_coordinates - 2 * self.domain_length / 3)
+    [init_amplitude_mean]: mean of initial amplitude. Default is 0.1.
+    [init_amplitude_width]: width of initial amplitude. Default is 0.05.
+    [init_spread_mean]: mean of initial spread. Default is 20.0.
+    [init_spread_width]: width of initial spread. Default is 10.0.
     [n_state]: dimension of state vector. Default is 256.
     [n_observation]: dimension of observation vector. Default is 10.
     [n_action]: dimension of control vector. Default is 8.
@@ -39,7 +39,7 @@ class GinzburgLandauEnv(PDE):
     [action_limit]: limit of action. Default is None.
     [observation_limit]: limit of observation. Default is None.
     [reward_limit]: limit of reward. Default is None.
-    [seed]: random seed. Default is 0.
+    [seed]: random seed. Default is None.
     """
 
     def __init__(
@@ -50,9 +50,11 @@ class GinzburgLandauEnv(PDE):
         sample_time: float = 0.1,
         process_noise_cov: float = 0.0,
         sensor_noise_cov: float = 0.25,
-        random_init_state_cov: float = 0.0,
         target_state: np.ndarray[float] = None,
-        init_state: np.ndarray[float] = None,
+        init_amplitude_mean: float = 0.1,
+        init_amplitude_width: float = 0.05,
+        init_spread_mean: float = 20.0,
+        init_spread_width: float = 10.0,
         n_state: int = 256,
         n_observation: int = 10,
         n_action: int = 8,
@@ -62,7 +64,7 @@ class GinzburgLandauEnv(PDE):
         action_limit: float = None,
         observation_limit: float = None,
         reward_limit: float = None,
-        seed: int = 0,
+        seed: int = None,
     ):
         PDE.__init__(
             self,
@@ -73,7 +75,6 @@ class GinzburgLandauEnv(PDE):
             sample_time=sample_time,
             process_noise_cov=process_noise_cov,
             sensor_noise_cov=sensor_noise_cov,
-            random_init_state_cov=random_init_state_cov,
             target_state=target_state,
             n_state=n_state,
             n_observation=n_observation,
@@ -87,17 +88,28 @@ class GinzburgLandauEnv(PDE):
             seed=seed,
         )
 
-        if init_state is not None:
-            self.init_state = init_state
-        else:
-            self.init_state = 0.1 * np.tanh(
-                self.domain_coordinates - self.domain_length / 3
-            ) - 0.1 * np.tanh(self.domain_coordinates - 2 * self.domain_length / 3)
-        self.state = self.init_state
+        # initial state parameters
+        self.init_amplitude_mean = init_amplitude_mean
+        self.init_amplitude_width = init_amplitude_width
+        self.init_spread_mean = init_spread_mean
+        self.init_spread_width = init_spread_width
+        self.reset()
 
-        # compute control sup, observation matrix
-        self.control_sup = self._compute_control_sup()
-        self.C = self._compute_C()
+    def select_init_state(self, init_amplitude=None, init_spread=None):
+        """Function to select the initial state of the PDE."""
+        if init_amplitude is None:
+            random_amplitude = self.rng.uniform(-0.5 * self.init_amplitude_width, 0.5 * self.init_amplitude_width)
+            init_amplitude = self.init_amplitude_mean + random_amplitude
+        if init_spread is None:
+            random_spread = self.rng.uniform(-0.5 * self.init_spread_width, 0.5 * self.init_spread_width)
+            init_spread = self.init_spread_mean + random_spread
+        init_state = init_amplitude * (
+            np.tanh(self.domain_coordinates - self.domain_length / 2 + init_spread / 2)
+            - np.tanh(
+                self.domain_coordinates - self.domain_length / 2 - init_spread / 2
+            )
+        )
+        return init_state
 
     def _compute_fourier_linear_op(self):
         """Private function to compute the linear operator of the PDE in Fourier space.
@@ -135,3 +147,21 @@ class GinzburgLandauEnv(PDE):
             return right_hand_side
 
         return fourier_nonlinear_op
+
+    def get_params_asdict(self):
+        """Save the extra environment parameters as a dictionary.
+
+        Args:
+            None.
+
+        Returns:
+            a dictionary containing the parameters of the pde environment + extra parameters.
+        """
+        pde_dict = super().get_params_asdict()
+        extra_data = {
+            "init_amplitude_mean": self.init_amplitude_mean,
+            "init_amplitude_width": self.init_amplitude_width,
+            "init_spread_mean": self.init_spread_mean,
+            "init_spread_width": self.init_spread_width,
+        }
+        return {**pde_dict, **extra_data}

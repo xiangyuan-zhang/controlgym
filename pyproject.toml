@@ -1,19 +1,20 @@
 [tool.poetry]
 name = "controlgym"
-version = "0.1.0"
+version = "1.0.0"
 description = "large-scale safety-critical control benchmarks for reinforcement learning algorithms"
 authors = ["Xiangyuan Zhang <xz7@illinois.edu>", 
             "Weichao Mao <weichao2@illinois.edu>",
             "Saviz Mowlavi <mowlavi@merl.com>"]
 license = "MIT"
 readme = "README.md"
+include = ["controlgym/envs/linear_control_src/*.mat"]
 exclude = ["examples.ipynb", "requirements.txt", "setup.py", "**/.conda", "**/.vscode"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-numpy = "^1.24.3"
+numpy = "^1.23.5"
 scipy = "^1.11.1"
-matplotlib = "^3.7.2"
+matplotlib = "^3.7.1"
 torch = "^2.0.1"
 gymnasium = "0.29.1"
 

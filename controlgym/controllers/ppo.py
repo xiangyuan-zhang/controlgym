@@ -219,7 +219,8 @@ class PPO:
         """
         # reset the environment
         observation, info = self.env.reset(seed=seed, state=state)
-        torch.manual_seed(seed=seed)
+        if seed is not None:
+            torch.manual_seed(seed=seed)
         # run the simulated trajectory and calculate the h2 cost
         total_reward = 0
         state_traj = np.zeros((self.env.n_state, self.env.n_steps + 1))

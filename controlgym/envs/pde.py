@@ -51,7 +51,6 @@ class PDE(gymnasium.Env):
         sample_time: float,
         process_noise_cov: float,
         sensor_noise_cov: float,
-        random_init_state_cov: float,
         target_state: np.ndarray[float],
         n_state: int,
         n_observation: int,
@@ -79,7 +78,6 @@ class PDE(gymnasium.Env):
 
         self.process_noise_cov = process_noise_cov
         self.sensor_noise_cov = sensor_noise_cov
-        self.random_init_state_cov = random_init_state_cov
 
         self.seed = seed
         self.rng = np.random.default_rng(seed=self.seed)
@@ -107,6 +105,10 @@ class PDE(gymnasium.Env):
         self.domain_wavenumbers = (
             np.fft.rfftfreq(self.n_state, self.domain_length / self.n_state) * 2 * np.pi
         )
+
+        # compute control support and observation matrix
+        self.control_sup = self._compute_control_sup()
+        self.C = self._compute_C()
 
         # set up the weighting matrices
         self.Q = Q_weight * np.identity(self.n_state)
@@ -231,7 +233,7 @@ class PDE(gymnasium.Env):
 
         # set the new system state
         next_state = np.fft.irfft(state_fourier) + disturbance
-       
+
         # compute the reward, which happens before updating the environment state
         # because the reward (might) depends on both the current state and the next state.
         # * In the default reward function, the dependence on the current state is
@@ -255,12 +257,10 @@ class PDE(gymnasium.Env):
     def reset(self, seed: int = None, state: np.ndarray[float] = None):
         """Resets the environment to an initial internal state, returning an initial observation and info.
 
-        This method generates a new starting state often with some randomness to ensure that the agent explores the
+        This method generates a new starting state with some randomness to ensure that the agent explores the
         state space and learns a generalized policy about the environment. This randomness can be controlled
         with the ``seed`` parameter otherwise if the environment already has a random number generator and
         reset() is called with ``seed=None``, the RNG is not reset.
-
-        Therefore, reset() should (in the typical use case) be called with a seed right after initialization and then never again.
 
         Args:
             seed (optional int): The seed that is used to initialize the environment's PRNG (`np_random`).
@@ -274,34 +274,44 @@ class PDE(gymnasium.Env):
             info (dict): Contains auxillary information. In this case, it contains the state of the system to be utlized
                         for deploying state-feedback controllers.
         """
-        super().reset(seed=seed)
-        # reset the system to a user-defined initial state if there is one
-        if state is not None:
+        # reset the random number generator if there is a new seed provided
+        if seed is not None:
+            self.rng = np.random.default_rng(seed=seed)
+
+        # randomly generate a state (see child classes for individual implementations)
+        if state is None:
+            state = self.select_init_state()
+        else: # check whether the input state is of the right dimension
             assert state.shape == (
                 self.n_state,
             ), "Input state has wrong dimension, the correct dimension is: " + str(
                 (self.n_state,)
             )
-            self.init_state = state
-
-        # reset the random number generator if there is a new seed provided
-        if seed is not None:
-            self.rng = np.random.default_rng(seed=seed)
-
-        # add Gaussian random noise to the initial state with covaraince matrix
-        # being self.random_init_state_cov * I
-        self.state = self.rng.multivariate_normal(
-            self.init_state,
-            self.random_init_state_cov * np.identity(self.n_state),
-        )
+        self.state = state
 
         # generate the observation
         observation = self._get_obs()
         info = {"state": self.state}
         self.step_count = 0
 
-        # return the state resetting to and the observation
         return observation, info
+
+    def set_target_state(self, state: np.ndarray[float]):
+        """Set the target state of the system
+
+        Args:
+            target_state (`ndarray` with shape `(n_state,)`): the target state of the system
+
+        Returns:
+            None.
+        """
+        # check whether the input target state is of the right dimension
+        assert state.shape == (
+            self.n_state,
+        ), "Input target state has wrong dimension, the correct dimension is: " + str(
+            (self.n_state,)
+        )
+        self.target_state = state
 
     def _get_obs(self):
         """private function to generate the observation for pdes
@@ -350,7 +360,7 @@ class PDE(gymnasium.Env):
         reward = - float((self.state - self.target_state).T @ self.Q @ (self.state - self.target_state) 
                          + action.T @ self.R @ action)
         return reward
-    
+
     def _compute_fourier_linear_op(self):
         """
         template function to be implemented in child classes for nonlinear PDEs
@@ -414,7 +424,7 @@ class PDE(gymnasium.Env):
         Returns:
             a dictionary containing the parameters of the pde environment
         """
-        return {
+        env_params =  {
             "id": self.id,
             "n_steps": self.n_steps,
             "domain_length": self.domain_length,
@@ -422,14 +432,19 @@ class PDE(gymnasium.Env):
             "sample_time": self.sample_time,
             "process_noise_cov": self.process_noise_cov,
             "sensor_noise_cov": self.sensor_noise_cov,
-            "random_init_state_cov": self.random_init_state_cov,
-            "init_state": self.init_state,
             "n_state": self.n_state,
             "n_observation": self.n_observation,
             "n_action": self.n_action,
             "control_sup_width": self.control_sup_width,
-            "seed": self.seed,
             "action_limit": self.action_limit,
             "observation_limit": self.observation_limit,
             "reward_limit": self.reward_limit,
         }
+
+        if self.seed is not None:
+            env_params["seed"] = self.seed
+
+        if self.target_state is not None:
+            env_params["target_state"] = self.target_state
+
+        return env_params

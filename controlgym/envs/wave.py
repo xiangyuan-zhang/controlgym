@@ -27,10 +27,11 @@ class WaveEnv(PDE):
     [sample_time]: each discrete-time step represents (ts) seconds. Default is 0.1.
     [process_noise_cov]: process noise covariance coefficient. Default is 0.0.
     [sensor_noise_cov]: sensor noise covariance coefficient. Default is 0.25.
-    [random_init_state_cov]: random initial state covariance coefficient. Default is 0.0.
     [target_state]: target state. Default is np.zeros(n_state).
-    [init_state]: initial state. Default is
-        np.cosh(10 * (self.domain_coordinates - 1 * self.domain_length / 2)) ** (-1).
+    [init_amplitude_mean]: mean of initial amplitude. Default is 1.0.
+    [init_amplitude_width]: width of initial amplitude. Default is 0.2.
+    [init_spread_mean]: mean of initial spread. Default is 0.05.
+    [init_spread_width]: width of initial spread. Default is 0.02.
     [wave_speed]: wave speed. Default is 0.1.
     [n_state]: dimension of state vector. Default is 200.
     [n_observation]: dimension of observation vector. Default is 10.
@@ -41,7 +42,7 @@ class WaveEnv(PDE):
     [action_limit]: limit of action. Default is None.
     [observation_limit]: limit of observation. Default is None.
     [reward_limit]: limit of reward. Default is None.
-    [seed]: random seed. Default is 0.
+    [seed]: random seed. Default is None.
     """
 
     def __init__(
@@ -52,9 +53,11 @@ class WaveEnv(PDE):
         sample_time: float = 0.1,
         process_noise_cov: float = 0.0,
         sensor_noise_cov: float = 0.25,
-        random_init_state_cov: float = 0.0,
         target_state: np.ndarray[float] = None,
-        init_state: np.ndarray[float] = None,
+        init_amplitude_mean: float = 1.0,
+        init_amplitude_width: float = 0.2,
+        init_spread_mean: float = 0.05,
+        init_spread_width: float = 0.02,
         wave_speed: float = 0.1,
         n_state: int = 200,
         n_observation: int = 10,
@@ -65,8 +68,9 @@ class WaveEnv(PDE):
         action_limit: float = None,
         observation_limit: float = None,
         reward_limit: float = 1e15,
-        seed: int = 0,
+        seed: int = None,
     ):
+        self.n_state_half = int(n_state / 2)
         PDE.__init__(
             self,
             id="wave",
@@ -76,7 +80,6 @@ class WaveEnv(PDE):
             sample_time=sample_time,
             process_noise_cov=process_noise_cov,
             sensor_noise_cov=sensor_noise_cov,
-            random_init_state_cov=random_init_state_cov,
             target_state=target_state,
             n_state=n_state,
             n_observation=n_observation,
@@ -90,8 +93,6 @@ class WaveEnv(PDE):
             seed=seed,
         )
 
-        self.n_state_half = int(self.n_state / 2)
-
         # set up the grid parameters: since the state x comprises both u in
         # the wave equation and its time derivative, the number of grid
         # points is half the dimension of x
@@ -101,26 +102,39 @@ class WaveEnv(PDE):
             self.n_state_half,
         )
 
-        # the highest priority is to use the user-provided initial state
-        if init_state is not None:
-            self.init_state = init_state
-        else:
-            # if the user does not provide an initial state, use the default initial state
-            init_u = np.cosh(
-                10 * (self.domain_coordinates - 1 * self.domain_length / 2)
-            ) ** (-1)
-            init_v = np.zeros(self.n_state_half)
-            self.init_state = np.concatenate((init_u, init_v))
-        self.state = self.init_state
-
         # set up the wave speed
         assert wave_speed >= 0, "wave speed must be non-negative"
         self.wave_speed = wave_speed
 
-        # compute A, B2, C
+        # compute A and B2 matrices
         self.A = self._compute_A()
-        self.B2 = self._compute_control_sup()
-        self.C = self._compute_C()
+        self.B2 = self.control_sup
+
+        # initial state parameters
+        self.init_amplitude_mean = init_amplitude_mean
+        self.init_amplitude_width = init_amplitude_width
+        self.init_spread_mean = init_spread_mean
+        self.init_spread_width = init_spread_width
+        self.reset()
+
+    def select_init_state(self, init_amplitude=None, init_spread=None):
+        """Function to select the initial state of the PDE."""
+        if init_amplitude is None:
+            random_amplitude = self.rng.uniform(
+                -0.5 * self.init_amplitude_width, 0.5 * self.init_amplitude_width
+            )
+            init_amplitude = self.init_amplitude_mean + random_amplitude
+        if init_spread is None:
+            random_spread = self.rng.uniform(
+                -0.5 * self.init_spread_width, 0.5 * self.init_spread_width
+            )
+            init_spread = self.init_spread_mean + random_spread
+        init_u = init_amplitude * np.cosh(
+            1 / init_spread * (self.domain_coordinates - 1 * self.domain_length / 2)
+        ) ** (-1)
+        init_v = np.zeros(self.n_state_half)
+        init_state = np.concatenate((init_u, init_v))
+        return init_state
 
     def step(self, action: np.ndarray[float]):
         """Run one timestep of the environment's dynamics using the agent actions and optional disturbance input.
@@ -278,5 +292,11 @@ class WaveEnv(PDE):
         """
         pde_dict = super().get_params_asdict()
         pde_dict.pop("integration_time")
-        extra_data = {"wave_speed": self.wave_speed}
+        extra_data = {
+            "wave_speed": self.wave_speed,
+            "init_amplitude_mean": self.init_amplitude_mean,
+            "init_amplitude_width": self.init_amplitude_width,
+            "init_spread_mean": self.init_spread_mean,
+            "init_spread_width": self.init_spread_width,
+        }
         return {**pde_dict, **extra_data}

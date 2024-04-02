@@ -28,10 +28,11 @@ class ConvectionDiffusionReactionEnv(PDE):
     [sample_time]: each discrete-time step represents (ts) seconds. Default is 0.1.
     [process_noise_cov]: process noise covariance coefficient. Default is 0.0.
     [sensor_noise_cov]: sensor noise covariance coefficient. Default is 0.25.
-    [random_init_state_cov]: random initial state covariance coefficient. Default is 0.0.
     [target_state]: target state. Default is np.zeros(n_state).
-    [init_state]: initial state. Default is
-        np.cosh(10 * (self.domain_coordinates - 1 * self.domain_length / 2)) ** (-1).
+    [init_amplitude_mean]: mean of initial amplitude. Default is 1.0.
+    [init_amplitude_width]: width of initial amplitude. Default is 0.2.
+    [init_spread_mean]: mean of initial spread. Default is 0.05.
+    [init_spread_width]: width of initial spread. Default is 0.02.
     [diffusivity_constant]: diffusivity constant. Default is 0.002.
     [convective_velocity]: convective velocity. Default is 0.1.
     [reaction_constant]: reaction constant. Default is 0.1.
@@ -44,7 +45,7 @@ class ConvectionDiffusionReactionEnv(PDE):
     [action_limit]: limit of action. Default is None.
     [observation_limit]: limit of observation. Default is None.
     [reward_limit]: limit of reward. Default is None.
-    [seed]: random seed. Default is 0.
+    [seed]: random seed. Default is None.
     """
 
     def __init__(
@@ -55,9 +56,11 @@ class ConvectionDiffusionReactionEnv(PDE):
         sample_time: float = 0.1,
         process_noise_cov: float = 0.0,
         sensor_noise_cov: float = 0.25,
-        random_init_state_cov: float = 0.0,
         target_state: np.ndarray[float] = None,
-        init_state: np.ndarray[float] = None,
+        init_amplitude_mean: float = 1.0,
+        init_amplitude_width: float = 0.2,
+        init_spread_mean: float = 0.05,
+        init_spread_width: float = 0.02,
         diffusivity_constant: float = 0.002,
         convective_velocity: float = 0.1,
         reaction_constant: float = 0.1,
@@ -70,7 +73,7 @@ class ConvectionDiffusionReactionEnv(PDE):
         action_limit: float = None,
         observation_limit: float = None,
         reward_limit: float = None,
-        seed: int = 0,
+        seed: int = None,
     ):
         PDE.__init__(
             self,
@@ -81,7 +84,6 @@ class ConvectionDiffusionReactionEnv(PDE):
             sample_time=sample_time,
             process_noise_cov=process_noise_cov,
             sensor_noise_cov=sensor_noise_cov,
-            random_init_state_cov=random_init_state_cov,
             target_state=target_state,
             n_state=n_state,
             n_observation=n_observation,
@@ -95,23 +97,38 @@ class ConvectionDiffusionReactionEnv(PDE):
             seed=seed,
         )
 
-        # the highest priority is to use the user-provided initial state
-        if init_state is not None:
-            self.init_state = init_state
-        # if the user does not provide an initial state, use the default initial state
-        else:
-            self.init_state = np.cosh(
-                10 * (self.domain_coordinates - 1 * self.domain_length / 2)
-            ) ** (-1)
-        self.state = self.init_state
+        # physical parameters
         self.diffusivity_constant = diffusivity_constant
         self.convective_velocity = convective_velocity
         self.reaction_constant = reaction_constant
 
-        # compute A, B2, C
+        # compute A and B2 matrices
         self.A, self.eigen = self._compute_A()
-        self.B2 = self._compute_control_sup()
-        self.C = self._compute_C()
+        self.B2 = self.control_sup
+
+        # initial state parameters
+        self.init_amplitude_mean = init_amplitude_mean
+        self.init_amplitude_width = init_amplitude_width
+        self.init_spread_mean = init_spread_mean
+        self.init_spread_width = init_spread_width
+        self.reset()
+
+    def select_init_state(self, init_amplitude=None, init_spread=None):
+        """Function to select the initial state of the PDE"""
+        if init_amplitude is None:
+            random_amplitude = self.rng.uniform(
+                -0.5 * self.init_amplitude_width, 0.5 * self.init_amplitude_width
+            )
+            init_amplitude = self.init_amplitude_mean + random_amplitude
+        if init_spread is None:
+            random_spread = self.rng.uniform(
+                -0.5 * self.init_spread_width, 0.5 * self.init_spread_width
+            )
+            init_spread = self.init_spread_mean + random_spread
+        init_state = init_amplitude * np.cosh(
+            1 / init_spread * (self.domain_coordinates - 0.5 * self.domain_length)
+        ) ** (-1)
+        return init_state
 
     def step(self, action: np.ndarray[float]):
         """Run one timestep of the environment's dynamics using the agent actions and optional disturbance input.
@@ -150,7 +167,7 @@ class ConvectionDiffusionReactionEnv(PDE):
 
         # compute the observation
         observation = self._get_obs()
-        
+
         # compute the next state
         next_state = self.A @ self.state + self.B2 @ action + disturbance
 
@@ -213,5 +230,9 @@ class ConvectionDiffusionReactionEnv(PDE):
             "diffusivity_constant": self.diffusivity_constant,
             "convective_velocity": self.convective_velocity,
             "reaction_constant": self.reaction_constant,
+            "init_amplitude_mean": self.init_amplitude_mean,
+            "init_amplitude_width": self.init_amplitude_width,
+            "init_spread_mean": self.init_spread_mean,
+            "init_spread_width": self.init_spread_width,
         }
         return {**pde_dict, **extra_data}

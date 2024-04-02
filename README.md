@@ -1,7 +1,7 @@
 # controlgym
 
 ## Description
-`Controlgym` provides 36 safety-critical industrial control environments and 10 infinite-dimensional PDE-based control problems with continuous, unbounded action and observation spaces that are inspired by real-world applications. This project supports the Learning for Dynamics & Control (L4DC) community, focusing on vital issues: convergence of reinforcement learning (RL) algorithms in policy development, stability, safety, and robustness of learning-based controllers, and the scalability of RL algorithms to high and potentially infinite-dimensional systems. We provide a detailed description of `controlgym` in [this paper](https://arxiv.org/abs/2311.18736).
+`Controlgym` provides 36 industrial control environments and 10 infinite-dimensional PDE-based control problems with continuous, unbounded action and observation spaces that are inspired by real-world applications. This project supports the Learning for Dynamics & Control (L4DC) community, focusing on vital issues: convergence of reinforcement learning (RL) algorithms in policy development, stability, and robustness of learning-based controllers, and the scalability of RL algorithms to high and potentially infinite-dimensional systems. We provide a detailed description of `controlgym` in [this paper](https://arxiv.org/abs/2311.18736).
 
 <p align="center">
   <img src="figures/gallery.jpeg" alt="" width="700px">
@@ -80,11 +80,11 @@ conda deactivate
 Check out our code examples in this [Jupyter notebook file](./examples.ipynb).
 
 ## Reference
-- Zhang, X., Mao, W., Mowlavi, S., Benosman, M., & Başar, T. (2023). [Controlgym: Large-Scale Safety-Critical Control Environments for Benchmarking Reinforcement Learning Algorithms.](https://arxiv.org/abs/2311.18736) arXiv preprint arXiv:2311.18736.
+- Zhang, X., Mao, W., Mowlavi, S., Benosman, M., & Başar, T. (2023). [Controlgym: Large-Scale Control Environments for Benchmarking Reinforcement Learning Algorithms.](https://arxiv.org/abs/2311.18736) arXiv preprint arXiv:2311.18736.
   
 ```bibtex
 @article{zhang2023controlgym,
-    title = {Controlgym: Large-Scale Safety-Critical Control Environments for Benchmarking Reinforcement Learning Algorithms},
+    title = {Controlgym: Large-Scale Control Environments for Benchmarking Reinforcement Learning Algorithms},
     author = {Zhang, Xiangyuan and Mao, Weichao and Mowlavi, Saviz and Benosman, Mouhacine and Ba{\c{s}}ar, Tamer},
     journal = {arXiv preprint arXiv:2311.18736},
     year = {2023}

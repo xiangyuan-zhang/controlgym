@@ -1,7 +1,8 @@
 import numpy as np
-import scipy.io as sio
-import os
 import gymnasium
+import importlib.resources as pkg_resources
+import scipy.io as sio
+from controlgym.envs import linear_control_src
 from controlgym.envs.utils import c2d
 
 class LinearControlEnv(gymnasium.Env):
@@ -50,6 +51,7 @@ class LinearControlEnv(gymnasium.Env):
     [action_limit]: limit of action. Default is None.
     [observation_limit]: limit of observation. Default is None.
     [reward_limit]: limit of reward. Default is None.
+    [seed]: random seed. Default is None.
     """
     def __init__(
         self,
@@ -62,7 +64,7 @@ class LinearControlEnv(gymnasium.Env):
         action_limit: float = None,
         observation_limit: float = None,
         reward_limit: float = None,
-        seed: int = 0,
+        seed: int = None,
     ):
         self.n_steps = n_steps
         self.sample_time = sample_time
@@ -75,13 +77,10 @@ class LinearControlEnv(gymnasium.Env):
         self.id = id
         self.category = "linear"
 
-        # check whether the mat file exists
-        assert os.path.exists(
-            "controlgym/envs/linear_control_src/" + self.id + ".mat"
-        ), "Enviroment id does not exist!"
-
-        # load the environment mat file
-        env = sio.loadmat("controlgym/envs/linear_control_src/" + self.id + ".mat")
+        with pkg_resources.path(linear_control_src, f"{self.id}.mat") as mat_path:
+            assert mat_path.exists(), "Environment id does not exist!"
+            # load the environment mat file
+            env = sio.loadmat(str(mat_path))
 
         # compute the discrete-time linear system parameters
         self.A, self.B1, self.B2, self.C1, self.D11, self.D12 = c2d(env["A"],
@@ -186,7 +185,7 @@ class LinearControlEnv(gymnasium.Env):
         # generate the observation
         observation = self._get_obs(disturbance)
         output = self._get_output(action, disturbance)
-        
+
         # step the system dynamics forward for one discrete step
         next_state = self.A @ self.state + self.B1 @ disturbance + self.B2 @ action
 
@@ -195,7 +194,7 @@ class LinearControlEnv(gymnasium.Env):
         # * In the default reward function, the dependence on the current state is
         # through the self.state attribute, which will not be updated until the next line.
         reward = self.get_reward(action, observation, disturbance, next_state)
-        
+
         # update the environment
         self.state = next_state
 
@@ -218,8 +217,6 @@ class LinearControlEnv(gymnasium.Env):
         with the ``seed`` parameter otherwise if the environment already has a random number generator and
         reset() is called with ``seed=None``, the RNG is not reset.
 
-        Therefore, reset() should (in the typical use case) be called with a seed right after initialization and then never again.
-
         Args:
             seed (optional int): The seed that is used to initialize the environment's PRNG (`np_random`).
             state (optional `ndarray` with shape `(n_state,)): An specific initial state to reset the environment to.
@@ -230,7 +227,10 @@ class LinearControlEnv(gymnasium.Env):
             info (dict): Contains auxillary information. In this case, it contains the state of the system to be utlized
                         for deploying state-feedback controllers. 
         """
-        super().reset(seed=seed)
+        # reset the random number generator if there is a new seed provided
+        if seed is not None:
+            self.rng = np.random.default_rng(seed=seed)
+
         # reset the system to a user-defined initial state if there is one
         if state is not None:
             assert state.shape == (
@@ -239,10 +239,6 @@ class LinearControlEnv(gymnasium.Env):
                 (self.n_state,)
             )
             self.init_state = state
-
-        # reset the random number generator if there is a new seed provided
-        if seed is not None:
-            self.rng = np.random.default_rng(seed=seed)
 
         # add Gaussian random noise to the initial state with covaraince matrix
         # being self.random_init_state_cov * I
@@ -328,15 +324,20 @@ class LinearControlEnv(gymnasium.Env):
         Returns:
             a dictionary containing the parameters of the environment
         """
-        return {
+        env_params = {
             "id": self.id,
             "n_steps": self.n_steps,
             "sample_time": self.sample_time,
             "noise_cov": self.noise_cov,
             "random_init_state_cov": self.random_init_state_cov,
             "init_state": self.init_state,
-            "seed": self.seed,
             "action_limit": self.action_limit,
             "observation_limit": self.observation_limit,
             "reward_limit": self.reward_limit,
         }
+
+        # Conditionally add "seed" if it's not None
+        if self.seed is not None:
+            env_params["seed"] = self.seed
+
+        return env_params

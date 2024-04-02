@@ -25,11 +25,9 @@ class AllenCahnEnv(PDE):
     [sample_time]: each discrete-time step represents (ts) seconds. Default is 0.01.
     [process_noise_cov]: process noise covariance coefficient. Default is 0.0.
     [sensor_noise_cov]: sensor noise covariance coefficient. Default is 0.25.
-    [random_init_state_cov]: random initial state covariance coefficient. Default is 0.0.
     [target_state]: target state. Default is np.zeros(n_state).
-    [init_state]: initial state. Default is
-        (self.domain_coordinates - 0.5 * self.domain_length) ** 2 
-        * np.cos((2 * np.pi * (self.domain_coordinates - 0.5 * self.domain_length)) / self.domain_length)
+    [init_offset_mean]: mean of initial offset. Default is 0.
+    [init_offset_width]: width of initial offset. Default is 0.2.
     [diffusivity_constant]: diffusivity constant. Default is 1e-4.
     [potential_constant]: potential constant. Default is 5.0.
     [n_state]: dimension of state vector. Default is 256.
@@ -41,19 +39,19 @@ class AllenCahnEnv(PDE):
     [action_limit]: limit of action. Default is None.
     [observation_limit]: limit of observation. Default is None.
     [reward_limit]: limit of reward. Default is 1e15.
-    [seed]: random seed. Default is 0.
+    [seed]: random seed. Default is None.
     """
     def __init__(
         self,
         n_steps: int = 100,
         domain_length: float = 2.0,
-        integration_time: float = 0.001, 
+        integration_time: float = 0.001,
         sample_time: float = 0.01,
         process_noise_cov: float = 0.0,
         sensor_noise_cov: float = 0.25,
-        random_init_state_cov: float = 0.0,
         target_state: np.ndarray[float] = None,
-        init_state: np.ndarray[float] = None,
+        init_offset_mean: float = 0.0,
+        init_offset_width: float = 0.2,
         diffusivity_constant: float = 1e-4,
         potential_constant: float = 5.0,
         n_state: int = 256,
@@ -65,7 +63,7 @@ class AllenCahnEnv(PDE):
         action_limit: float = None,
         observation_limit: float = None,
         reward_limit: float = None,
-        seed: int = 0,
+        seed: int = None,
     ):
         PDE.__init__(
             self,
@@ -75,8 +73,7 @@ class AllenCahnEnv(PDE):
             integration_time=integration_time, 
             sample_time=sample_time, 
             process_noise_cov=process_noise_cov, 
-            sensor_noise_cov=sensor_noise_cov, 
-            random_init_state_cov=random_init_state_cov, 
+            sensor_noise_cov=sensor_noise_cov,
             target_state=target_state,
             n_state=n_state,  
             n_observation=n_observation,  
@@ -90,22 +87,27 @@ class AllenCahnEnv(PDE):
             seed=seed, 
         )
 
-        if init_state is not None:
-            self.init_state = init_state
-        else:
-            self.init_state = (
-                self.domain_coordinates - 0.5 * self.domain_length
-            ) ** 2 * np.cos(
-                (2 * np.pi * (self.domain_coordinates - 0.5 * self.domain_length))
-                / self.domain_length
-            )
-        self.state = self.init_state
+        # physical parameters
         self.diffusivity_constant = diffusivity_constant
         self.potential_constant = potential_constant
 
-        # compute control sup, observation matrix
-        self.control_sup = self._compute_control_sup()
-        self.C = self._compute_C()
+        # initial state parameters
+        self.init_offset_mean = init_offset_mean
+        self.init_offset_width = init_offset_width
+        self.reset()
+
+    def select_init_state(self, init_offset=None):
+        """Function to select the initial state of the PDE."""
+        if init_offset is None:
+            random_offset = self.rng.uniform(-0.5 * self.init_offset_width, 0.5 * self.init_offset_width)
+            init_offset = self.init_offset_mean + random_offset
+        init_state = init_offset + (
+            self.domain_coordinates - 0.5 * self.domain_length
+        ) ** 2 * np.cos(
+            (2 * np.pi * (self.domain_coordinates - 0.5 * self.domain_length))
+            / self.domain_length
+        )
+        return init_state
 
     def _compute_fourier_linear_op(self):
         """Private function to compute the linear operator of the PDE in Fourier space.
@@ -157,5 +159,7 @@ class AllenCahnEnv(PDE):
         extra_data = {
             "diffusivity_constant": self.diffusivity_constant,
             "potential_constant": self.potential_constant,
+            "init_offset_mean": self.init_offset_mean,
+            "init_offset_width": self.init_offset_width,
         }
         return {**pde_dict, **extra_data}
